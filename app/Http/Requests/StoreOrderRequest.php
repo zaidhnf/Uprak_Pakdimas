@@ -2,28 +2,34 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreOrderRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
+    public function authorize()
     {
-        return false;
+        return auth()->check();
     }
-
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, ValidationRule|array<mixed>|string>
-     */
-    public function rules(): array
+    
+    public function rules()
     {
         return [
-            //
+            'notes' => 'nullable|string|max:1000',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|integer|min:1'
+        ];
+    }
+    
+    public function messages()
+    {
+        return [
+            'items.required' => 'Minimal harus ada satu produk dalam pesanan',
+            'items.min' => 'Minimal harus ada satu produk dalam pesanan',
+            'items.*.product_id.required' => 'ID produk wajib diisi',
+            'items.*.product_id.exists' => 'Produk tidak ditemukan',
+            'items.*.quantity.required' => 'Jumlah produk wajib diisi',
+            'items.*.quantity.min' => 'Jumlah produk minimal 1'
         ];
     }
 }

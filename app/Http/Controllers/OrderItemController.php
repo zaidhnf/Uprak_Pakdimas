@@ -1,65 +1,66 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Http\Request;
 
 class OrderItemController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Menampilkan semua item dari pesanan tertentu
+     * GET /api/orders/{orderId}/items
      */
-    public function index()
+    public function index($orderId)
     {
-        //
+        $order = Order::where('user_id', auth()->id())->find($orderId);
+        
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan tidak ditemukan'
+            ], 404);
+        }
+        
+        $items = $order->items()->with('product')->get();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar item pesanan berhasil diambil',
+            'data' => $items
+        ]);
     }
-
+    
     /**
-     * Show the form for creating a new resource.
+     * Menampilkan detail item pesanan tertentu
+     * GET /api/orders/{orderId}/items/{itemId}
      */
-    public function create()
+    public function show($orderId, $itemId)
     {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(OrderItem $orderItem)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(OrderItem $orderItem)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, OrderItem $orderItem)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(OrderItem $orderItem)
-    {
-        //
+        $order = Order::where('user_id', auth()->id())->find($orderId);
+        
+        if (!$order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pesanan tidak ditemukan'
+            ], 404);
+        }
+        
+        $item = $order->items()->with('product')->find($itemId);
+        
+        if (!$item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Item pesanan tidak ditemukan'
+            ], 404);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Detail item pesanan berhasil diambil',
+            'data' => $item
+        ]);
     }
 }
