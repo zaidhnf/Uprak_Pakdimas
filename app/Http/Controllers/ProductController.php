@@ -1,13 +1,11 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreProductRequest;
-use App\Http\Requests\UpdateProductRequest;
 use App\Models\Product;
-use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -19,24 +17,22 @@ class ProductController extends Controller
     {
         $query = Product::with('category')
             ->where('is_active', true);
-        
-        // Filter berdasarkan kategori (bonus)
-        if ($request->has('category_id') && $request->category_id) {
+
+        // Filter kategori (bonus)
+        if ($request->filled('category_id')) {
             $query->where('category_id', $request->category_id);
         }
-        
-        // Pencarian produk (bonus)
-        if ($request->has('search') && $request->search) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+
+        // Search produk (bonus)
+        if ($request->filled('search')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('name', 'like', '%' . $request->search . '%')
+                  ->orWhere('description', 'like', '%' . $request->search . '%');
             });
         }
-        
-        // Pagination (10 produk per halaman)
+
         $products = $query->paginate(10);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Daftar produk berhasil diambil',
@@ -51,22 +47,16 @@ class ProductController extends Controller
     public function store(StoreProductRequest $request)
     {
         $validated = $request->validated();
-        
-        // Generate slug dari name
-        $validated['slug'] = \Str::slug($validated['name']);
-        
-        // Set default is_active jika tidak ada
-        $validated['is_active'] = $validated['is_active'] ?? true;
-        
+
+        $validated['slug'] = Str::slug($validated['name']);
+        $validated['is_active'] = true;
+
         $product = Product::create($validated);
-        
-        // Load relasi category
-        $product->load('category');
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Produk berhasil dibuat',
-            'data' => $product
+            'data' => $product->load('category')
         ], 201);
     }
 
@@ -74,81 +64,52 @@ class ProductController extends Controller
      * Menampilkan detail produk beserta kategori
      * GET /api/products/{id}
      */
-    public function show($id)
+    public function show(Product $product)
     {
-        $product = Product::with('category')->find($id);
-        
-        if (!$product) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Produk tidak ditemukan'
-            ], 404);
-        }
-        
         return response()->json([
             'success' => true,
             'message' => 'Detail produk berhasil diambil',
-            'data' => $product
+            'data' => $product->load('category')
         ]);
     }
 
     /**
-     * Memperbarui data produk
+     * Memperbarui produk
      * PUT /api/products/{id}
      */
-    public function update(UpdateProductRequest $request, $id)
+    public function update(StoreProductRequest $request, Product $product)
     {
-        $product = Product::find($id);
-        
-        if (!$product) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Produk tidak ditemukan'
-            ], 404);
-        }
-        
         $validated = $request->validated();
-        
-        // Update slug jika name berubah
-        if (isset($validated['name']) && $validated['name'] !== $product->name) {
-            $validated['slug'] = \Str::slug($validated['name']);
+
+        if (
+            isset($validated['name']) &&
+            $validated['name'] !== $product->name
+        ) {
+            $validated['slug'] = Str::slug($validated['name']);
         }
-        
+
         $product->update($validated);
-        
-        // Load relasi category
-        $product->load('category');
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Produk berhasil diperbarui',
-            'data' => $product
+            'data' => $product->load('category')
         ]);
     }
 
     /**
-     * Mengaktifkan / menonaktifkan produk (toggle is_active)
+     * Toggle status aktif produk
      * PATCH /api/products/{id}/toggle
      */
-    public function toggle($id)
+    public function toggle(Product $product)
     {
-        $product = Product::find($id);
-        
-        if (!$product) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Produk tidak ditemukan'
-            ], 404);
-        }
-        
-        $product->is_active = !$product->is_active;
-        $product->save();
-        
-        $status = $product->is_active ? 'diaktifkan' : 'dinonaktifkan';
-        
+        $product->update([
+            'is_active' => !$product->is_active
+        ]);
+
         return response()->json([
             'success' => true,
-            'message' => "Produk berhasil {$status}",
+            'message' => 'Status produk berhasil diubah',
             'data' => $product->load('category')
         ]);
     }
@@ -157,27 +118,17 @@ class ProductController extends Controller
      * Menghapus produk
      * DELETE /api/products/{id}
      */
-    public function destroy($id)
+    public function destroy(Product $product)
     {
-        $product = Product::find($id);
-        
-        if (!$product) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Produk tidak ditemukan'
-            ], 404);
-        }
-        
-        // Cek apakah produk sedang digunakan di order_items
         if ($product->orderItems()->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Produk tidak dapat dihapus karena sudah ada dalam pesanan'
             ], 400);
         }
-        
+
         $product->delete();
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Produk berhasil dihapus'

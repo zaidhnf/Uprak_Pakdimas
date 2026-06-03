@@ -1,8 +1,7 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreOrderRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -20,7 +19,7 @@ class OrderController extends Controller
     {
         $orders = Order::with('items.product')
             ->where('user_id', auth()->id())
-            ->orderBy('created_at', 'desc')
+            ->latest()
             ->get();
 
         return response()->json([
@@ -37,125 +36,147 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request)
     {
         $validated = $request->validated();
-        
+
         DB::beginTransaction();
-        
+
         try {
+
             $totalPrice = 0;
             $orderItems = [];
-            
-            // Hitung total harga dan validasi stok
+
+            /*
+             * Validasi stok & hitung total
+             */
             foreach ($validated['items'] as $item) {
-                $product = Product::findOrFail($item['product_id']);
-                
-                // Cek stok
+
+                $product = Product::findOrFail(
+                    $item['product_id']
+                );
+
                 if ($product->stock < $item['quantity']) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Stok produk {$product->name} tidak mencukupi. Stok tersedia: {$product->stock}"
-                    ], 400);
+                    throw new \Exception(
+                        "Stok produk {$product->name} tidak mencukupi"
+                    );
                 }
-                
-                $subtotal = $product->price * $item['quantity'];
+
+                $subtotal =
+                    $product->price *
+                    $item['quantity'];
+
                 $totalPrice += $subtotal;
-                
+
                 $orderItems[] = [
                     'product_id' => $product->id,
                     'quantity' => $item['quantity'],
-                    'unit_price' => $product->price
+                    'unit_price' => $product->price,
                 ];
-                
-                // Kurangi stok
-                $product->decrement('stock', $item['quantity']);
             }
-            
-            // Buat order
+
+            /*
+             * Buat order
+             */
             $order = Order::create([
                 'user_id' => auth()->id(),
                 'total_price' => $totalPrice,
                 'status' => 'pending',
-                'notes' => $validated['notes'] ?? null
+                'notes' => $validated['notes'] ?? null,
             ]);
-            
-            // Buat order items
+
+            /*
+             * Buat order item
+             * dan kurangi stok
+             */
             foreach ($orderItems as $item) {
-                $item['order_id'] = $order->id;
-                OrderItem::create($item);
+
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_price' => $item['unit_price'],
+                ]);
+
+                Product::find($item['product_id'])
+                    ->decrement(
+                        'stock',
+                        $item['quantity']
+                    );
             }
-            
+
             DB::commit();
-            
-            // Load relasi items dan product untuk response
-            $order->load('items.product');
-            
+
+            $order = $order
+                ->fresh()
+                ->load('items.product');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Pesanan berhasil dibuat',
                 'data' => $order
             ], 201);
-            
+
         } catch (\Exception $e) {
+
             DB::rollBack();
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat pesanan: ' . $e->getMessage()
+                'message' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Menampilkan detail pesanan beserta item-itemnya
-     * GET /api/orders/{id}
+     * Menampilkan detail pesanan
+     * GET /api/orders/{order}
      */
-    public function show($id)
+    public function show(Order $order)
     {
-        $order = Order::with('items.product')
-            ->where('user_id', auth()->id())
-            ->find($id);
-        
-        if (!$order) {
+        if ($order->user_id !== auth()->id()) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'Pesanan tidak ditemukan'
-            ], 404);
+                'message' => 'Akses ditolak'
+            ], 403);
         }
-        
-        // Cek kepemilikan pesanan (sudah dilakukan oleh where user_id)
+
         return response()->json([
             'success' => true,
             'message' => 'Detail pesanan berhasil diambil',
-            'data' => $order
+            'data' => $order->load('items.product')
         ]);
     }
 
     /**
-     * Memperbarui status pesanan
-     * PATCH /api/orders/{id}/status
+     * Mengubah status pesanan
+     * PATCH /api/orders/{order}/status
      */
-    public function updateStatus(Request $request, $id)
-    {
-        $order = Order::where('user_id', auth()->id())->find($id);
-        
-        if (!$order) {
+    public function updateStatus(
+        Request $request,
+        Order $order
+    ) {
+        if ($order->user_id !== auth()->id()) {
+
             return response()->json([
                 'success' => false,
-                'message' => 'Pesanan tidak ditemukan'
-            ], 404);
+                'message' => 'Akses ditolak'
+            ], 403);
         }
-        
+
         $validated = $request->validate([
-            'status' => 'required|in:pending,processing,done,cancelled'
+            'status' =>
+                'required|in:pending,processing,done,cancelled'
         ]);
-        
+
         $order->update([
             'status' => $validated['status']
         ]);
-        
+
         return response()->json([
             'success' => true,
             'message' => 'Status pesanan berhasil diperbarui',
-            'data' => $order->load('items.product')
+            'data' => $order
+                ->fresh()
+                ->load('items.product')
         ]);
     }
 }

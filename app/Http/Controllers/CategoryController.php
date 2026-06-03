@@ -17,7 +17,8 @@ class CategoryController extends Controller
         $categories = Category::latest()->get();
 
         return response()->json([
-            'message' => 'Data kategori',
+            'success' => true,
+            'message' => 'Daftar kategori',
             'data' => $categories
         ]);
     }
@@ -28,18 +29,19 @@ class CategoryController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:categories,name',
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string'
         ]);
 
         $category = Category::create([
-            'name' => $request->name,
-            'slug' => Str::slug($request->name),
-            'description' => $request->description
+            'name' => $validated['name'],
+            'slug' => Str::slug($validated['name']),
+            'description' => $validated['description'] ?? null
         ]);
 
         return response()->json([
+            'success' => true,
             'message' => 'Kategori berhasil dibuat',
             'data' => $category
         ], 201);
@@ -54,6 +56,7 @@ class CategoryController extends Controller
         $category->load('products');
 
         return response()->json([
+            'success' => true,
             'message' => 'Detail kategori',
             'data' => $category
         ]);
@@ -65,19 +68,20 @@ class CategoryController extends Controller
      */
     public function update(Request $request, Category $category)
     {
-        $request->validate([
-            'name' => 'required|string|max:255|unique:categories,name,' . $category->id,
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string'
         ]);
 
         $category->update([
-            'name' => $request->name,
-            'slug' => Str::slug($request->name),
-            'description' => $request->description
+            'name' => $validated['name'],
+            'slug' => Str::slug($validated['name']),
+            'description' => $validated['description']
         ]);
 
         return response()->json([
-            'message' => 'Kategori berhasil diupdate',
+            'success' => true,
+            'message' => 'Kategori berhasil diperbarui',
             'data' => $category
         ]);
     }
@@ -88,15 +92,18 @@ class CategoryController extends Controller
      */
     public function destroy(Category $category)
     {
-        if ($category->products()->count() > 0) {
+        if ($category->products()->exists()) {
+
             return response()->json([
-                'message' => 'Kategori tidak bisa dihapus karena masih memiliki produk'
+                'success' => false,
+                'message' => 'Kategori masih memiliki produk'
             ], 400);
         }
 
         $category->delete();
 
         return response()->json([
+            'success' => true,
             'message' => 'Kategori berhasil dihapus'
         ]);
     }

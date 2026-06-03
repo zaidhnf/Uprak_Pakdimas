@@ -2,44 +2,44 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     /**
-     * REGISTER
-     * POST /auth/register
+     * Register User
      */
-    public function store(Request $request)
+    public function register(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:6|confirmed',
+            'password' => 'required|min:8|confirmed',
         ]);
 
         $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Register berhasil',
-            'user' => $user,
-            'token' => $token
+            'success' => true,
+            'message' => 'Registrasi berhasil',
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+            ]
         ], 201);
     }
 
     /**
-     * LOGIN
-     * POST /auth/login
+     * Login User
      */
     public function login(Request $request)
     {
@@ -48,45 +48,49 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
 
             throw ValidationException::withMessages([
                 'email' => ['Email atau password salah']
             ]);
         }
 
-        $user = User::where('email', $request->email)->first();
-
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
+            'success' => true,
             'message' => 'Login berhasil',
-            'user' => $user,
-            'token' => $token
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+            ]
         ]);
     }
 
     /**
-     * PROFILE
-     * GET /auth/profile
+     * Profile User
      */
     public function profile(Request $request)
     {
         return response()->json([
-            'user' => $request->user()
+            'success' => true,
+            'message' => 'Data profil',
+            'data' => $request->user(),
         ]);
     }
 
     /**
-     * LOGOUT
-     * POST /auth/logout
+     * Logout User
      */
-    public function destroy(Request $request)
+    public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
 
         return response()->json([
-            'message' => 'Logout berhasil'
+            'success' => true,
+            'message' => 'Logout berhasil',
         ]);
     }
 }
